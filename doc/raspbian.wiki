@@ -1,0 +1,110 @@
+This is my howto to build and setup on a Raspberry Pi.
+
+Starting with vanilla Raspbian setup (https://projects.raspberrypi.org/en/projects/raspberry-pi-setting-up/)
+
+All folowing commands are under the assumption that the software is installed as the standard 'pi' user.
+
+From the CLI execute the following commands:
+    
+    git clone https://github.com/MarcoBlijdorp/IPTV-Analyzer.git
+
+    sudo apt-get install autoconf
+
+    sudo apt-get install libxtables-dev
+
+    sudo apt-get install -y libproc-daemon-perl libproc-pid-file-perl libconfig-file-perl libdata-compare-perl liblog-log4perl-perl libnet-snmp-perl liblog-dispatch-perl
+
+    sudo apt-get install mariadb-server mariadb-client
+
+    cd IPTV-Analyzer/
+
+    ./autogen.sh
+
+    make
+
+    sudo make install
+
+    sudo insmod ./xt_mpeg2ts.ko
+
+    cd collector/
+
+    perl Makefile.PL
+
+    make
+    
+    sudo make install
+
+    cd ..
+
+    cd database
+
+    sudo mysql -u root
+        drop database if exists tvprobe;
+        create database tvprobe;
+        grant all on tvprobe.* to 'tvprobe'@'localhost' identified by 'tvprobe';
+        flush privileges;
+        exit;
+
+    sudo mysql -u root tvprobe < database-schema-latest.sql
+
+Install nodejs (copied from https://www.instructables.com/id/Install-Nodejs-and-Npm-on-Raspberry-Pi/):
+    uname -a
+
+Check the armv version and copy the right down link from https://nodejs.org/en/download/. In my case https://nodejs.org/dist/v12.18.0/node-v12.18.0-linux-armv7l.tar.xz
+
+    wget https://nodejs.org/dist/v12.18.0/node-v12.18.0-linux-armv7l.tar.xz
+    tar xvf https://nodejs.org/dist/v12.18.0/node-v12.18.0-linux-armv7l.tar.xz
+    cd node-v12.18.0-linux-armv7l
+    sudo cp -R * /usr/local/
+
+Check if everything is installed with the following commands:
+    node -v
+    npm -v
+    sudo npm install forever -g
+
+Disable apache from startup:
+    sudo update-rc.d apache2 disable
+
+Prepare nodejs:
+    cd IPTV-Analyser/nodejs
+    npm install
+    cp config.js.sample config.js
+
+Make sure the settings in config.js are correct...
+    vi config.js
+
+Prepare log directory
+    sudo mkdir /var/log/tvprobe
+    ln -s /var/log/tvprobe logs
+
+Test front-end:
+    sudo node tvprobe.js
+
+This should start without error on port 80 (or what ever configured in config.js) kill with ctrl-C
+
+Prepare auto-start of front-end:
+    Make sure the path to tvprobe.js file is set correctly (DAEMON_PATH) in scripts/tvprobe
+
+    cd  scripts
+    chmod +x tvprobe
+    sudo ln -s /home/pi/IPTV-Analyzer/nodejs/scripts/tvprobe /etc/init.d/tvprobe
+    sudo update-rc.d tvprobe defaults
+    chmod +x daily_maintenance.sh
+    crontab -e
+        0 2 * * * /home/pi/IPTV-Analyzer/nodejs/scripts/daily_maintenance.sh
+
+Make sure the collector settings are correct...
+    vi /etc/iptv-analyzer/collector.conf
+
+Prepare the iptables:
+    sudo iptables -t mangle -I PREROUTING -i eth0 -p udp -m mpeg2ts --name in_eth0
+
+And make them persistant:
+    sudo apt-get install iptables-persistent
+(just answer Yes to all questions)
+
+Make the collector start at boot:
+    sudo ln -s /home/pi/IPTV-Analyzer/collector/scripts/iptv-collector /etc/init.d/iptv-collector
+    sudo update-rc.d iptv-collector defaults
+
+Done!
