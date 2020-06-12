@@ -481,7 +481,7 @@ html
                 date = new Date(date.getTime() - document.getElementById('auto_update').period);
             }
             else {
-                date.setDate(date.getDate() - 20);
+                date.setDate(date.getDate() - 2);
             }
             document.getElementById('date_from').value = formatDate(date);
             document.getElementById('time_from').value = date.toLocaleTimeString('en-GB');
