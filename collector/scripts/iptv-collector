@@ -20,8 +20,8 @@
 
 DAEMON_PATH="/usr/local/bin/"
 
-DAEMON=forever
-DAEMONOPTS="iptv-collector"
+DAEMON=iptv-collector
+DAEMONOPTS=
 
 NAME=iptv-collector
 DESC="iptv-collector"
@@ -31,7 +31,7 @@ SCRIPTNAME=/etc/init.d/$NAME
 case "$1" in
 start)
         printf "%-50s" "Starting $NAME..."
-	ifconfig eth0 promisc
+        ifconfig eth0 promisc
         cd $DAEMON_PATH
         PID=`$DAEMON $DAEMONOPTS > /dev/null 2>&1 & echo $!`
         #echo "Saving PID" $PID " to " $PIDFILE

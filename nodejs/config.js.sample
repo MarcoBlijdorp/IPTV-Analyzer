@@ -14,7 +14,7 @@ config.linux_group = 'pi';
 config.db_host = 'localhost';
 config.db_user = 'tvprobe';
 config.db_password = 'tvprobe';
-config.db_database = 'tvprobe';
+config.db_database = 'tvprobepasswd';
 
 
 config.log_level = 'debug';
