@@ -59,7 +59,7 @@ var get_buckets_channel = function(req, res) {
     q += 'AND stream_session.port_dst = ? ';
     params.push(req.params.channel, req.params.port);
     if (req.query.probe_id) {
-        q += 'AND probe_id = ? ';
+        q += 'AND log_event.probe_id = ? ';
         params.push(req.query.probe_id);
     }
     q += 'AND UNIX_TIMESTAMP(record_time) * 1000 BETWEEN ? AND ? ';
