@@ -73,7 +73,6 @@ if (config.db_host && config.db_user && config.db_password && config.db_database
         database          : config.db_database,
         multipleStatements: true
     });
-    logger.add_mysql(connection);
 }
 
 init_app = function(pages) {

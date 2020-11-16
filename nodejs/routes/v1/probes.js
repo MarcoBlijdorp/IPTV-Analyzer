@@ -3,7 +3,9 @@ var get_probes = function(req, res) {
     var q = 'SELECT *, id as probe_id FROM probes WHERE  probes.hidden <> "yes" ORDER BY probes.distance';
     connection.query(q, function(err, result) {
         if (err) {
-        	res.StatusCode = 500;
+            //console.log(err.fatal);
+        	res.statusCode = 500;
+        	logger.error('Error retrieving probes: '+ err);
             res.send('Error retrieving probes: '+ err);
             return;
         }
@@ -12,6 +14,9 @@ var get_probes = function(req, res) {
         	res.send();
         	return;
         }
+	    res.header('Cache-Control', 'no-cache, no-store');
+        res.header('Expires', '-1');
+        res.header('Pragma', 'no-cache');
         res.send({probes: result});
     });
 }

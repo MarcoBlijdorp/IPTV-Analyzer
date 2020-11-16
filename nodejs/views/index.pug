@@ -22,8 +22,8 @@ html
             .main-content
                 block content
                     h2 IPTV drops statistics
-                    input(class='button', type='button', value='View by probe' onclick='byProbe()')
-                    input(class='button', type='button', value='View by channel' onclick='byChannel()')
+                    input(class='button', type='button', id='view_probe', value='View by probe' onclick='byProbe()')
+                    input(class='button', type='button', id='view_channel', value='View by channel' onclick='byChannel()')
                     p
                     fieldset(id='probe', style='display: none;')
                         legend Select a probe
@@ -40,6 +40,18 @@ html
                         legend Adjust period
                         table
                             tr
+                                td
+                                    p Display interval:
+                                td
+                                    select(id='display_interval', class='button', onchange='onChangeInterval()')
+                                        option(value='3600') 1 hour
+                                        option(value='7200', selected) 2 hours
+                                        option(value='21600') 6 hours
+                                        option(value='43200') 12 hours
+                                        option(value='86400') 1 day
+                                        option(value='604800') 1 week
+                                        option(value='0') custom
+                            tr
                                 td(class='tiny') From:
                                 td(class='date')  
                                     input(id='date_from', class='input', type='date', onchange='onChangeDate()')
@@ -53,23 +65,20 @@ html
                                     input(id='time_to', class='input', onchange='onChangeTime()')
                                 td(class='tiny')
                                 td(class='medium')
-                                    input(id='auto_update', type='checkbox', onchange='onChangeAutoUpdate()')
-                                    | auto update  
-                                    select(id='auto_update_selector', class='button', style='display: none;')
-                                        option(value='60000') every minute
-                                        option(value='600000') every 10 minutes
-                                        option(value='1800000') every 30 minutes
-                                        option(value='3600000') every hour
-                                    
+                                    input(id='auto_update', type='checkbox')
+                                    | auto update
                         div(id='period_text')
                         table
                             tr
                                 td
-                                    p Aggregation interval/period (bucket size) in sec:
+                                    p Aggregation interval/period (bucket size):
                                 td
-                                    input(class='tiny', id='aggregation_interval', onchange='onChangeInterval()')
-                                td(id='aggregation_interval_minutes')
-                                    p minutes
+                                    select(id='aggregation_interval', class='button')
+                                        option(value='60') 1 minute
+                                        option(value='300', selected) 5 minutes
+                                        option(value='6000') 10 minutes
+                                        option(value='18000') 30 minutes
+                                        option(value='36000') 1 hour
                         table(style='display:none')
                             tr
                                 td
@@ -89,8 +98,7 @@ html
     script(type='text/javascript').
         var selected_probe = null;
         var auto_update_timer = null;
-        initPeriod();
-        initInterval();
+        onChangeInterval();
         function formatDate(date) {
             return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
         }
@@ -160,8 +168,9 @@ html
             document.getElementById('probe_' +  probe_data.probe_id).classList.add('selected_probe');
             selected_probe = probe_data;
             checkSubmit();
+            console.log(probe_data);
             if (draw_graph)
-                ajaxRequest('v1/buckets/channel/' + probe_data.multicast_dst + '?bucket=' +  document.getElementById('aggregation_interval').value + '&time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date + (isNaN(probe_data.probe_id) ? ''  : '&probe_id=' + probe_data.probe_id), drawBarGraph);
+                ajaxRequest('v1/buckets/channel/' + probe_data.multicast_dst + '/' + probe_data.port_dst + '?bucket=' +  document.getElementById('aggregation_interval').value + '&time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date + (isNaN(probe_data.probe_id) ? ''  : '&probe_id=' + probe_data.probe_id), drawBarGraph);
         }
         function onPeriodClicked(probe_data) {
             for (var count = 1; count <= probe_data.count; count++) {
@@ -181,7 +190,7 @@ html
             else
                 title += ' on probe: \'' +  selected_probe.name + '/' + selected_probe.switch + '/' + selected_probe.shortloc + '\'';
             if (selected_probe.multicast_dst)
-                title += ' for channel: ' + selected_probe.multicast_dst;
+                title += ' for channel: ' + selected_probe.multicast_dst + ':' + selected_probe.port_dst;
             var bar_graph = document.getElementById('bar_graph');
             var width = document.getElementById('aggregation_interval').value * 1000;
             var drops =   {
@@ -211,18 +220,15 @@ html
                 marker: { color: 'rgba(177, 64, 8, 0.2)' }
             };
             var max_errors = 100;
-            var max_payload = 100;
             for (bucket of result.buckets) {
                 drops.x.push(bucket.timestamp);
                 drops.y.push(bucket.drops);
                 skips.x.push(bucket.timestamp);
                 skips.y.push(bucket.skips);
                 packets.x.push(bucket.timestamp);
-                packets.y.push(bucket.payload_bytes / bucket.records / 1024 / 8000);
+                packets.y.push(bucket.payload_bytes ? 1 : 0);
                 if (bucket.drops + bucket.skips > max_errors)
                     max_errors = bucket.drops + bucket.skips;
-                if (bucket.payload_bytes > max_payload)
-                    max_payload = bucket.payload_bytes / bucket.records / 1024 / 8000;
             }
             var layout = {
                 title: title,
@@ -233,12 +239,12 @@ html
                 },
                 yaxis: {
                     title: 'errors',
-                    range: [0, max_errors * 2],
+                    range: [0, max_errors * 1.1],
                     type: 'linear'
                 },
                 yaxis2: {
-                    title: 'payload (mb/s)',
-                    range: [0, max_payload * 1.1],
+                    title: 'payload',
+                    range: [0, 1],
                     overlaying: 'y',
                     side: 'right'
                 }
@@ -253,7 +259,7 @@ html
 
         }
         function channelSubmit() {
-            ajaxRequest('v1/periods/' + document.getElementById('channel_selector').value + '?time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date, drawPeriodTable);
+            ajaxRequest('v1/periods/' + document.getElementById('channel_selector').value.replace(':', '/') + '?time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date, drawPeriodTable);
         }
         function probeSubmit() {   
             ajaxRequest('v1/buckets/id/' + selected_probe.probe_id + '?bucket=' +  document.getElementById('aggregation_interval').value + '&time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date, drawBarGraph);
@@ -264,20 +270,31 @@ html
                 auto_update_timer = null;
                 document.getElementById('channel_submit').value = 'Submit';
                 document.getElementById('probe_submit').value = 'Submit';
-                document.getElementById('auto_update_selector').disabled = false;
+                document.getElementById('display_interval').disabled = false;
+                document.getElementById('aggregation_interval').disabled = false;
+                document.getElementById('channel_selector').disabled = false;
+                document.getElementById('view_probe').disabled = false;
+                document.getElementById('view_channel').disabled = false;
+                document.getElementById('auto_update').disabled = false;
+                disableDates();
                 return;
             }
             if (document.getElementById('auto_update').checked) {
                 document.getElementById('channel_submit').value = 'Stop';
                 document.getElementById('probe_submit').value = 'Stop';
-                document.getElementById('auto_update_selector').disabled = true;
+                document.getElementById('display_interval').disabled = true;
+                document.getElementById('aggregation_interval').disabled = true;
+                document.getElementById('channel_selector').disabled = true;
+                document.getElementById('view_probe').disabled = true;
+                document.getElementById('view_channel').disabled = true;
+                document.getElementById('auto_update').disabled = true;
                 auto_update_timer = setInterval(function() {
-                        initPeriod();
+                        onChangeInterval();
                         ajax_request();
                     },
-                    document.getElementById('auto_update_selector').value
+                    document.getElementById('aggregation_interval').value * 1000
                 );
-                initPeriod();
+                onChangeInterval();
             }
             ajax_request();
         }
@@ -298,8 +315,8 @@ html
             to_date.setMinutes(document.getElementById('time_to').value.split(':')[1]);
             to_date.setSeconds(document.getElementById('time_to').value.split(':')[2]);
             document.getElementById('date_to').date = to_date.getTime();
-            document.getElementById('auto_update').period = document.getElementById('date_to').date - document.getElementById('date_from').date;
-            document.getElementById('period_text').innerHTML =  'Interval: ' + formatDuration(document.getElementById('auto_update').period);
+            document.getElementById('period_text').period = document.getElementById('date_to').date - document.getElementById('date_from').date;
+            document.getElementById('period_text').innerHTML =  'Interval: ' + formatDuration(document.getElementById('period_text').period);
         }
         function onClickDate(input_id) {
             var input = document.getElementById(input_id);
@@ -312,31 +329,6 @@ html
         function onChangeTime() {
             onChangeDate();
         }
-        function onChangeAutoUpdate() {
-            var auto_update = document.getElementById('auto_update').checked;
-            document.getElementById('date_to').disabled = auto_update;
-            document.getElementById('time_to').disabled = auto_update;
-            document.getElementById('date_from').disabled = auto_update;
-            document.getElementById('time_from').disabled = auto_update;
-            document.getElementById('auto_update_selector').style.display = auto_update ? '' : 'none';
-        }
-        function onChangeInterval() {
-            var seconds = parseInt(document.getElementById('aggregation_interval').value);
-            if (isNaN(seconds)) {
-                seconds = 600;
-                document.getElementById('aggregation_interval').value = seconds;
-            } 
-            var text  = '';
-            if (seconds >= 60) {
-                text += Math.floor(seconds / 60) + (seconds < 120 ? ' minute' : ' minutes');
-            }
-            if (seconds % 60 != 0) {
-                if (text !== '')
-                    text += ', ';
-                text += (seconds % 60) + (seconds % 60 == 1 ? ' second' : ' seconds');
-            }
-            document.getElementById('aggregation_interval_minutes').innerHTML = '(' + text + ')';
-        }
         function drawPeriodTable(data) {
             if (data.periods.length == 0) {
                 document.getElementById('error').innerHTML = 'No probes found for this channel and time'; //todo put in data
@@ -346,7 +338,8 @@ html
             }
             var all_probes = {
                 probe_id: 'all',
-                multicast_dst: data.periods[0].multicast_dst
+                multicast_dst: data.periods[0].multicast_dst,
+                port_dst: data.periods[0].port_dst
             };    
             document.getElementById('error').innerHTML = '';
             document.getElementById('period_table').style.display = '';
@@ -386,6 +379,7 @@ html
                         shortloc: probe.shortloc,
                         distance: probe.distance,
                         multicast_dst: probe.multicast_dst,
+                        port_dst: probe.port_dst,
                         time_min: probe.time_min,
                         time_max: probe.time_max,
                         drops: probe.drops,
@@ -416,7 +410,7 @@ html
                 tableCell(row, 'medium', formatDateTime(new Date(combined[probe].time_max)));
                 tableCell(row, 'small', combined[probe].records);
                 var sub_counter = 1;
-                while ((period_counter < data.periods.length)  && (data.periods[period_counter].probe_id == probe)) {
+                while ((period_counter < data.periods.length) && (data.periods[period_counter].probe_id == probe)) {
                     row = tableRowCreate(table.body);
                     row.style.display = 'none';
                     row.id = 'probe_' +  probe + '_period_' + sub_counter;
@@ -469,27 +463,38 @@ html
             checkSubmit();
             for (channel of data.channels) {
                 var option = document.createElement('option');
-                option.text = channel.multicast_dst;
+                option.text = channel.multicast_dst + ':' + channel.port_dst;
                 selector.add(option);
             }
         }
-        function initPeriod() {
+        function disableDates() {
+            var interval = document.getElementById('display_interval').value;;
+            document.getElementById('date_to').disabled = (auto_update_timer || interval != 0);
+            document.getElementById('time_to').disabled = (auto_update_timer || interval != 0);
+            document.getElementById('date_from').disabled = (auto_update_timer || interval != 0);
+            document.getElementById('time_from').disabled = (auto_update_timer || interval != 0);        
+        }
+        function onChangeInterval() {
             var date = new Date();
+            var interval = document.getElementById('display_interval').value;
+            
+            disableDates();
+
+            document.getElementById('period_text').style.display = (interval != 0) ? 'none' : '';
+
             document.getElementById('date_to').value = formatDate(date);
             document.getElementById('time_to').value = date.toLocaleTimeString('en-GB');
-            if (document.getElementById('auto_update').period) {
-                date = new Date(date.getTime() - document.getElementById('auto_update').period);
+            
+            if (interval != 0) {
+                date.setTime(date.getTime() - document.getElementById('display_interval').value * 1000);
             }
             else {
-                date.setDate(date.getDate() - 2);
+                date.setTime(date.getTime() - document.getElementById('period_text').period);
             }
             document.getElementById('date_from').value = formatDate(date);
             document.getElementById('time_from').value = date.toLocaleTimeString('en-GB');
-            onChangeDate(); 
-        }
-        function initInterval() {
-            document.getElementById('aggregation_interval').value = 3600;
-            onChangeInterval();
+            onChangeDate();  
+                                        
         }
 
     

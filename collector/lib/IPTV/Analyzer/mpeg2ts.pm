@@ -272,25 +272,11 @@ sub compare_proc_hash($$)
 	'ignore_hash_keys' =>
 	    [ "prev_id", "stream_session_id",
 	      "last_update", # timestamp of last DB insert
-	      "event_state", # keeping an event type state
-	      "packets", "payload_bytes" ] # Ignore the counters
+	      "event_state" ] # keeping an event type state
     };
 
     # Compare: Returns 0 if the structures differ, else returns 1.
     my $res = Compare($globalref->{$global_key}, $inputref, $ignore);
-
-    # Check for no-signal detection, by looking at the counters for
-    # packets (and payload_bytes implicit).
-    my $prevref = $globalref->{$global_key};
-    if (exists $prevref->{'packets'}) {
-	my $prev_packets = $prevref->{'packets'};
-	my $packets      = $inputref->{'packets'};
-	if ($prev_packets == $packets) {
-	    # no-signal detected, as the packet count have not changed
-	    # since last poll cycle.
-	    $res = 0;
-	}
-    }
 
     # Check if heartbeat is requested
     my $heartbeat = heartbeat_state_read();
