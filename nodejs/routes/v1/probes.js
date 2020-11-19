@@ -1,6 +1,6 @@
 
 var get_probes = function(req, res) {
-    var q = 'SELECT *, id as probe_id FROM probes WHERE  probes.hidden <> "yes" ORDER BY probes.distance';
+    var q = 'SELECT *, id as probe_id FROM probes WHERE probes.hidden <> "yes" ORDER BY probes.distance';
     connection.query(q, function(err, result) {
         if (err) {
             //console.log(err.fatal);

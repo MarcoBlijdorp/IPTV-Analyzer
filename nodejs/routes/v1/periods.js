@@ -10,6 +10,7 @@ var get_periods_from_channel = function(req, res) {
     q += 'stream_session.port_dst, ';
     q += 'sum(delta_skips) as skips, ';
     q += 'sum(delta_discon) as drops, ';
+    q += 'sum(delta_payload_bytes) as payload_bytes, ';
     q += 'count(log_event.multicast_dst) as records, ';
     q += 'UNIX_TIMESTAMP(min(record_time)) * 1000 as time_min, ';
     q += 'UNIX_TIMESTAMP(max(record_time)) * 1000 as time_max, ';

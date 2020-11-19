@@ -57,6 +57,9 @@ html
                                     input(id='date_from', class='input', type='date', onchange='onChangeDate()')
                                 td(class='small')  
                                     input(id='time_from', class='input', onchange='onChangeTime()')
+                                td(class='tiny')
+                                td(class='medium')
+                                    input(id='time_now', class='button', type='button', value='Now', onclick='onChangeInterval()')
                             tr(class='medium')  
                                 td(class='tiny')  To:
                                 td(class='date')
@@ -76,9 +79,9 @@ html
                                     select(id='aggregation_interval', class='button')
                                         option(value='60') 1 minute
                                         option(value='300', selected) 5 minutes
-                                        option(value='6000') 10 minutes
-                                        option(value='18000') 30 minutes
-                                        option(value='36000') 1 hour
+                                        option(value='600') 10 minutes
+                                        option(value='1800') 30 minutes
+                                        option(value='3600') 1 hour
                         table(style='display:none')
                             tr
                                 td
@@ -96,7 +99,11 @@ html
                     div(id='bar_graph' style='width: 1080px; height: 500px; display:none')
 
     script(type='text/javascript').
+        var channel_all = {
+            channel_id: 'all'
+        };
         var selected_probe = null;
+        var selected_channel = null;
         var auto_update_timer = null;
         onChangeInterval();
         function formatDate(date) {
@@ -159,18 +166,45 @@ html
             document.getElementById('channel_submit').disabled = false;
             document.getElementById('probe_submit').disabled = false;
         }
+        function getBucketsByChannel(probe_data) {
+            ajaxRequest('v1/buckets/channel/' + probe_data.multicast_dst + '/' + probe_data.port_dst + '?bucket=' +  document.getElementById('aggregation_interval').value + '&time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date + (isNaN(probe_data.probe_id) ? ''  : '&probe_id=' + probe_data.probe_id), drawBarGraph);
+        
+        }
+        function onChannelClicked(channel) {
+            document.getElementById('error').innerHTML= '';   
+            if (selected_channel) {
+                var element = document.getElementById('channel_' +  selected_channel.channel_id);
+                if (element)
+                    element.classList.remove('selected_channel');
+            }
+            var element = document.getElementById('channel_' +  channel.channel_id);
+            if (!element) {
+                channel = channel_all;
+                element = document.getElementById('channel_all');
+            }   
+            element.classList.add('selected_channel');
+            selected_channel = channel;
+            if (isNaN(channel.channel_id)) {
+                ajaxRequest('v1/buckets/id/' + selected_probe.probe_id + '?bucket=' +  document.getElementById('aggregation_interval').value + '&time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date, drawBarGraph);
+            }
+            else {
+                var probe_data = selected_probe;
+                probe_data.multicast_dst = channel.multicast_dst;
+                probe_data.port_dst = channel.port_dst;
+                getBucketsByChannel(probe_data);
+            }
+
+        }
         function onProbeClicked(probe_data, draw_graph = false) {
-            document.getElementById('error').innerHTML= '';              
-            var selected_probes = document.getElementsByClassName('selected_probe');
-            for (var count = 0; count < selected_probes.length; count++) {
-                selected_probes[count].classList.remove('selected_probe');
+            document.getElementById('error').innerHTML= '';
+            if (selected_probe) {          
+                document.getElementById('probe_' +  selected_probe.probe_id).classList.remove('selected_probe');
             }
             document.getElementById('probe_' +  probe_data.probe_id).classList.add('selected_probe');
             selected_probe = probe_data;
             checkSubmit();
-            console.log(probe_data);
             if (draw_graph)
-                ajaxRequest('v1/buckets/channel/' + probe_data.multicast_dst + '/' + probe_data.port_dst + '?bucket=' +  document.getElementById('aggregation_interval').value + '&time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date + (isNaN(probe_data.probe_id) ? ''  : '&probe_id=' + probe_data.probe_id), drawBarGraph);
+                getBucketsByChannel(probe_data);
         }
         function onPeriodClicked(probe_data) {
             for (var count = 1; count <= probe_data.count; count++) {
@@ -184,51 +218,52 @@ html
                document.getElementById('bar_graph').style.display = 'none';
                 return;
             }
-            var title = 'drops and skips' ;
+            var title = 'drops' ;
             if (isNaN(selected_probe.probe_id))
                 title += ' on all probes'; 
             else
                 title += ' on probe: \'' +  selected_probe.name + '/' + selected_probe.switch + '/' + selected_probe.shortloc + '\'';
-            if (selected_probe.multicast_dst)
+            if (selected_probe.multicast_dst && selected_channel.channel_id != 'all')
                 title += ' for channel: ' + selected_probe.multicast_dst + ':' + selected_probe.port_dst;
             var bar_graph = document.getElementById('bar_graph');
-            var width = document.getElementById('aggregation_interval').value * 1000;
             var drops =   {
                 x: [],
                 y: [],
+                width: [],
                 type: 'bar',
                 name: 'drops',
-                width: width,
                 marker: { color: 'red' }
-            };
-            var skips =   {
-                x: [],
-                y: [],
-                type: 'bar',
-                name: 'skips',
-                width: width,
-                marker: { color: 'blue' }
             };
             var packets =   {
                 x: [],
                 y: [],
+                width: [],
                 type: 'bar',
                 name: 'payload',
-                width: width,
                 yaxis: 'y2',
                 overlaying: 'y',
                 marker: { color: 'rgba(177, 64, 8, 0.2)' }
             };
-            var max_errors = 100;
+            var max_drops = 100;
+            var max_bitrate = 1;
             for (bucket of result.buckets) {
-                drops.x.push(bucket.timestamp);
-                drops.y.push(bucket.drops);
-                skips.x.push(bucket.timestamp);
-                skips.y.push(bucket.skips);
-                packets.x.push(bucket.timestamp);
-                packets.y.push(bucket.payload_bytes ? 1 : 0);
-                if (bucket.drops + bucket.skips > max_errors)
-                    max_errors = bucket.drops + bucket.skips;
+                if (bucket.drops > 0) {
+                    drops.x.push(bucket.time_min + 0.5 * bucket.period);
+                    drops.y.push(bucket.drops);
+                    drops.width.push(bucket.period);
+                    if (bucket.drops > max_drops) {
+                        max_drops = bucket.drops;
+                    }
+                }
+                if (bucket.payload_bytes > 0 && bucket.period > 0) {
+                    var bitrate = bucket.payload_bytes / ((bucket.period / 10000) * 1024 * 1024);
+                    packets.x.push(bucket.time_min + 0.5 * bucket.period);
+                    packets.y.push(bitrate);
+                    packets.width.push(bucket.period);
+                    if (bitrate > max_bitrate) {
+                        max_bitrate = bitrate;
+                    }
+                }
             }
             var layout = {
                 title: title,
@@ -239,12 +274,12 @@ html
                 },
                 yaxis: {
                     title: 'errors',
-                    range: [0, max_errors * 1.1],
+                    range: [0, max_drops * 1.1],
                     type: 'linear'
                 },
                 yaxis2: {
-                    title: 'payload',
-                    range: [0, 1],
+                    title: 'bitrate (mb/s)',
+                    range: [0, max_bitrate],
                     overlaying: 'y',
                     side: 'right'
                 }
@@ -252,7 +287,7 @@ html
             var options = {
                 staticPlot: true
             };
-            Plotly.newPlot( bar_graph, [packets, drops, skips], layout, options);
+            Plotly.newPlot( bar_graph, [packets, drops], layout, options);
 
            document.getElementById('error').innerHTML= '';
            document.getElementById('bar_graph').style.display = '';
@@ -262,7 +297,7 @@ html
             ajaxRequest('v1/periods/' + document.getElementById('channel_selector').value.replace(':', '/') + '?time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date, drawPeriodTable);
         }
         function probeSubmit() {   
-            ajaxRequest('v1/buckets/id/' + selected_probe.probe_id + '?bucket=' +  document.getElementById('aggregation_interval').value + '&time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date, drawBarGraph);
+            ajaxRequest('v1/channels/probe/' + selected_probe.probe_id + '?time_from=' + document.getElementById('date_from').date + '&time_to=' + document.getElementById('date_to').date, drawChannelTable);
         }
         function submit(ajax_request) {
             if (auto_update_timer) {
@@ -328,6 +363,43 @@ html
         }
         function onChangeTime() {
             onChangeDate();
+        }
+        function drawChannelTable(data) {
+            document.getElementById('error').innerHTML = '';
+            document.getElementById('period_table').style.display = '';
+            var count = 0;
+            var table = tableInit('period_table');
+            var row = tableRowCreate(table.body);
+            var cell = tableCell(row, 'medium', 'channel (all)');
+            cell.onclick = function() { onChannelClicked(this.channel); };
+            cell.classList.add('pointer');
+            cell.channel = channel_all;
+            cell.id = 'channel_all';
+            tableCell(row, 'small', 'drops');
+            tableCell(row, 'small', 'skips');
+            tableCell(row, 'small', 'records');
+            for (channel in data.channels) {
+                if (data.channels[channel].payload_bytes > 0 || data.channels[channel].skips > 0 || data.channels[channel].drops > 0) {
+                    count++;
+                    row = tableRowCreate(table.body);
+                    cell = tableCell(row, 'medium', data.channels[channel].multicast_dst + ':' + data.channels[channel].port_dst);
+                    cell.channel = data.channels[channel];
+                    cell.channel.channel_id = channel;
+                    cell.onclick = function() { onChannelClicked(this.channel); };
+                    cell.id = 'channel_' + channel;
+                    cell.classList.add('pointer');
+                    tableCell(row, 'small', data.channels[channel].drops.toString());
+                    tableCell(row, 'small', data.channels[channel].skips.toString());
+                    tableCell(row, 'small', data.channels[channel].records.toString());
+                }
+            }
+            if (count === 0) {
+                document.getElementById('error').innerHTML = 'No channels found for this probe and time'; //todo put in data
+                document.getElementById('period_table').style.display = 'none';
+                document.getElementById('bar_graph').style.display = 'none';
+                return;
+            }
+            onChannelClicked(selected_channel ? selected_channel : channel_all);
         }
         function drawPeriodTable(data) {
             if (data.periods.length == 0) {
@@ -432,26 +504,26 @@ html
         function drawProbeTable(data) {
             var table = tableInit('probe_table');
             var row = tableRowCreate(table.header);
+            tableHeaderCell(row, 'tiny', 'id');
             tableHeaderCell(row, 'small', 'distance');
             tableHeaderCell(row, 'small', 'name');
             tableHeaderCell(row, 'small', 'switch');
             tableHeaderCell(row, 'small', 'shortloc');
             tableHeaderCell(row, 'small', 'location');
-            tableHeaderCell(row, 'small', 'desciption');
-            tableHeaderCell(row, 'tiny', 'id');
+            tableHeaderCell(row, 'small', 'description');
             for (probe of data.probes) {
                 row = tableRowCreate(table.body);
                 row.classList.add('pointer');
                 row.id = 'probe_' + probe.probe_id;
                 row.probe_data = probe;
                 row.onclick = function() { onProbeClicked(this.probe_data); };
+                tableCell(row, 'tiny', probe.probe_id);
                 tableCell(row, 'small', probe.distance);
                 tableCell(row, 'small', probe.name);
                 tableCell(row, 'small', probe.switch);
                 tableCell(row, 'small', probe.shortloc);
                 tableCell(row, 'small', probe.location);
                 tableCell(row, 'small', probe.description);
-                tableCell(row, 'tiny', probe.probe_id);
             }
         }
         function drawChannelSelector(data) {
@@ -468,11 +540,12 @@ html
             }
         }
         function disableDates() {
-            var interval = document.getElementById('display_interval').value;;
+            var interval = document.getElementById('display_interval').value;
             document.getElementById('date_to').disabled = (auto_update_timer || interval != 0);
             document.getElementById('time_to').disabled = (auto_update_timer || interval != 0);
             document.getElementById('date_from').disabled = (auto_update_timer || interval != 0);
             document.getElementById('time_from').disabled = (auto_update_timer || interval != 0);        
+            document.getElementById('time_now').disabled = (auto_update_timer);        
         }
         function onChangeInterval() {
             var date = new Date();
