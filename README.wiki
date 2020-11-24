@@ -1,4 +1,4 @@
-Cloned from https://github.com/netoptimizer/IPTV-Analyzer
+Forked from https://github.com/netoptimizer/IPTV-Analyzer
 
 = IPTV-Analyzer =
 
