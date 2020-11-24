@@ -218,20 +218,21 @@ html
                document.getElementById('bar_graph').style.display = 'none';
                 return;
             }
-            var title = 'drops' ;
+            var title = 'Errors ' ;
+
+            if (selected_probe.multicast_dst && selected_channel.channel_id != 'all')
+                title += 'for channel: ' + selected_probe.multicast_dst + ':' + selected_probe.port_dst;
             if (isNaN(selected_probe.probe_id))
                 title += ' on all probes'; 
             else
                 title += ' on probe: \'' +  selected_probe.name + '/' + selected_probe.switch + '/' + selected_probe.shortloc + '\'';
-            if (selected_probe.multicast_dst && selected_channel.channel_id != 'all')
-                title += ' for channel: ' + selected_probe.multicast_dst + ':' + selected_probe.port_dst;
             var bar_graph = document.getElementById('bar_graph');
-            var drops =   {
+            var skips =   {
                 x: [],
                 y: [],
                 width: [],
                 type: 'bar',
-                name: 'drops',
+                name: 'packets dropped',
                 marker: { color: 'red' }
             };
             var packets =   {
@@ -244,15 +245,15 @@ html
                 overlaying: 'y',
                 marker: { color: 'rgba(177, 64, 8, 0.2)' }
             };
-            var max_drops = 100;
+            var max_skips = 100;
             var max_bitrate = 1;
             for (bucket of result.buckets) {
-                if (bucket.drops > 0) {
-                    drops.x.push(bucket.time_min + 0.5 * bucket.period);
-                    drops.y.push(bucket.drops);
-                    drops.width.push(bucket.period);
-                    if (bucket.drops > max_drops) {
-                        max_drops = bucket.drops;
+                if (bucket.skips > 0) {
+                    skips.x.push(bucket.time_min + 0.5 * bucket.period);
+                    skips.y.push(bucket.skips);
+                    skips.width.push(bucket.period);
+                    if (bucket.skips > max_skips) {
+                        max_skips = bucket.skips;
                     }
                 }
                 if (bucket.payload_bytes > 0 && bucket.period > 0) {
@@ -274,7 +275,7 @@ html
                 },
                 yaxis: {
                     title: 'errors',
-                    range: [0, max_drops * 1.1],
+                    range: [0, max_skips * 1.1],
                     type: 'linear'
                 },
                 yaxis2: {
@@ -287,7 +288,7 @@ html
             var options = {
                 staticPlot: true
             };
-            Plotly.newPlot( bar_graph, [packets, drops], layout, options);
+            Plotly.newPlot( bar_graph, [packets, skips], layout, options);
 
            document.getElementById('error').innerHTML= '';
            document.getElementById('bar_graph').style.display = '';
